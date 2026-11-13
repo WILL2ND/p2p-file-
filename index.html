@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P File Share</title>
+  <style>
+    :root { --bg: #070b14; --card: rgba(19, 27, 46, 0.85); --accent: #38bdf8; --glow: rgba(56, 189, 248, 0.35); --text: #f8fafc; --muted: #94a3b8; }
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: radial-gradient(circle at top right, #111c38, var(--bg) 65%); color: var(--text); padding: 20px; min-height: 100vh; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid rgba(56,189,248,0.15); padding-bottom: 16px; }
+    h1 { margin: 0; font-size: 1.5rem; background: linear-gradient(90deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .badge { font-size: 0.75rem; padding: 6px 12px; border-radius: 20px; font-weight: 600; background: var(--card); color: var(--accent); border: 1px solid rgba(56,189,248,0.3); display: flex; align-items: center; gap: 7px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.35; } }
+    @keyframes popIn { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    input, textarea, button { background: var(--card); border: 1px solid #1e293b; color: var(--text); padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; transition: all 0.25s ease; }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 12px var(--glow); }
+    button { background: linear-gradient(135deg, #38bdf8, #6366f1); color: #fff; font-weight: bold; cursor: pointer; border: none; }
+    button:hover { transform: translateY(-2px); box-shadow: 0 6px 18px var(--glow); }
+    .btn-sec { background: #334155; }
+    .btn-sm { padding: 6px 10px; font-size: 0.78rem; border-radius: 6px; flex: 1; }
+    .panel { background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 24px; display: none; border: 1px solid rgba(56,189,248,0.25); animation: popIn 0.3s ease; }
+    .panel.active { display: grid; gap: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+    .card { background: var(--card); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.25s ease; animation: popIn 0.35s ease backwards; }
+    .card:hover { transform: translateY(-5px); border-color: var(--accent); box-shadow: 0 12px 28px rgba(0,0,0,0.5), 0 0 16px var(--glow); }
+    .card h3 { margin: 8px 0 4px 0; color: #fff; font-size: 1.1rem; }
+    .meta { font-size: 0.72rem; color: var(--accent); opacity: 0.85; margin-bottom: 10px; font-family: monospace; }
+    .card p { margin: 0 0 16px 0; color: var(--muted); font-size: 0.85rem; flex-grow: 1; line-height: 1.45; }
+    .tag { font-size: 0.7rem; background: rgba(56,189,248,0.14); padding: 3px 9px; border-radius: 5px; color: var(--accent); align-self: flex-start; font-weight: 600; }
+    #modal { position: fixed; inset: 0; background: rgba(4,7,14,0.92); display: none; flex-direction: column; z-index: 99; padding: 16px; animation: popIn 0.2s ease; }
+    #modal.active { display: flex; }
+    iframe { flex-grow: 1; border: 1px solid rgba(56,189,248,0.3); border-radius: 10px; background: #fff; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <h1>⚡ P2P File Share</h1>
+        <span id="status" class="badge"><span class="dot"></span>Mesh Sync Ready</span>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; flex-grow:1; max-width:560px;">
+        <input type="text" id="search" placeholder="Search offline & P2P files..." style="flex:1; min-width:180px;" oninput="render()">
+        <button class="btn-sec" onclick="togglePanel('keyPanel')">🔑 Key</button>
+        <button onclick="openForm()">+ Share File</button>
+      </div>
+    </header>
+
+    <div id="keyPanel" class="panel">
+      <strong style="color:var(--accent);">Creator Identity Key (Edit &amp; Unpublish Permissions)</strong>
+      <p style="margin:0; font-size:0.82rem; color:var(--muted);">Copy your key to keep edit/unpublish control on another browser, or paste an existing key to restore ownership.</p>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="keyInput" style="flex:1; font-family:monospace;">
+        <button onclick="saveKey()">Apply Key</button>
+        <button class="btn-sec" onclick="togglePanel('keyPanel')">Close</button>
+      </div>
+    </div>
+
+    <div id="upPanel" class="panel">
+      <strong id="formHeading" style="color:var(--accent);">Share New File</strong>
+      <input type="hidden" id="editId">
+      <input type="text" id="gTitle" placeholder="Title">
+      <input type="text" id="gTag" placeholder="Category (e.g. Game, Archive, Media, App)">
+      <textarea id="gDesc" rows="2" placeholder="Description..."></textarea>
+      <input type="file" id="gFile">
+      <div style="display:flex; gap:10px;">
+        <button onclick="publish()" style="flex:1;">Save &amp; Sync</button>
+        <button class="btn-sec" onclick="togglePanel('upPanel')">Cancel</button>
+      </div>
+    </div>
+
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <div id="modal">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <strong id="mTitle" style="color:var(--accent); font-size:1.1rem;">Preview</strong>
+      <button onclick="closeModal()" style="background:#ef4444;">Close</button>
+    </div>
+    <iframe id="frame" sandbox="allow-scripts allow-pointer-lock"></iframe>
+  </div>
+  <script>
+    const HOST_ID = 'p2p-fileshare-mesh-root-v5';
+    let ownerId = localStorage.getItem('p2p_oid') || ('key_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36));
+    localStorage.setItem('p2p_oid', ownerId);
+    document.getElementById('keyInput').value = ownerId;
+
+    let db, vault = {}, deleted = new Set(), peers = [], isRoot = false;
+    const bc = new BroadcastChannel('p2p_mesh_tabs_v5');
+    const req = indexedDB.open('P2PFileShareDB_v5', 1);
+
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore('files', { keyPath: 'id' });
+      e.target.result.createObjectStore('deleted');
+    };
+
+    req.onsuccess = e => {
+      db = e.target.result;
+      db.transaction('deleted').objectStore('deleted').getAllKeys().onsuccess = ev => ev.target.result.forEach(k => deleted.add(k));
+      db.transaction('files').objectStore('files').getAll().onsuccess = ev => {
+        ev.target.result.forEach(i => { if (!deleted.has(i.id)) vault[i.id] = i; });
+        render();
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com';
+        s.onload = joinMesh;
+        s.onerror = () => setBadge('Offline Vault Active');
+        document.head.appendChild(s);
+      };
+    };
+
+    function togglePanel(id) { document.getElementById(id).classList.toggle('active'); }
+    function setBadge(t) { document.getElementById('status').innerHTML = `<span class="dot"></span>${t}`; }
+    function updateStatus() { const n = peers.filter(p => p.open).length + 1; setBadge(`Mesh Online • ${n} Node${n === 1 ? '' : 's'}`); }
+
+    function relay(msg) {
+      bc.postMessage(msg);
+      try { localStorage.setItem('p2p_sync_ping', JSON.stringify({ t: Date.now(), msg })); } catch(e) {}
+      peers.forEach(c => c.open && c.send(msg));
+    }
+
+    function handleIncoming(msg, forward = false) {
+      if (!msg) return;
+      if (msg.type === 'UPSERT') applyState(msg.item, forward);
+      if (msg.type === 'DELETE') removeState(msg.id, forward);
+      if (msg.type === 'SYNC') {
+        (msg.deleted || []).forEach(id => removeState(id, false));
+        (msg.items || []).forEach(i => applyState(i, false));
+      }
+    }
+
+    bc.onmessage = e => handleIncoming(e.data, false);
+    window.addEventListener('storage', e => {
+      if (e.key === 'p2p_sync_ping' && e.newValue) handleIncoming(JSON.parse(e.newValue).msg, false);
+    });
+
+    function saveKey() {
+      const val = document.getElementById('keyInput').value.trim();
+      if (!val) return alert('Enter a valid creator key.');
+      ownerId = val;
+      localStorage.setItem('p2p_oid', ownerId);
+      togglePanel('keyPanel');
+      render();
+    }
+
+    function applyState(item, b = true) {
+      if (deleted.has(item.id) || (vault[item.id] && vault[item.id].updated >= item.updated)) return;
+      vault[item.id] = item;
+      if (db) db.transaction('files', 'readwrite').objectStore('files').put(item);
+      render();
+      if (b) relay({ type: 'UPSERT', item });
+    }
+
+    function removeState(id, b = true) {
+      deleted.add(id);
+      delete vault[id];
+      if (db) {
+        db.transaction('files', 'readwrite').objectStore('files').delete(id);
+        db.transaction('deleted', 'readwrite').objectStore('deleted').put(1, id);
+      }
+      render();
+      if (b) relay({ type: 'DELETE', id });
+    }
+
+    function joinMesh() {
+      const node = new Peer(HOST_ID);
+      node.on('open', () => { isRoot = true; updateStatus(); node.on('connection', bindConn); });
+      node.on('error', () => {
+        const guest = new Peer();
+        guest.on('open', () => { isRoot = false; bindConn(guest.connect(HOST_ID)); updateStatus(); });
+        guest.on('error', () => setBadge('Offline Vault Active'));
+      });
+    }
+
+    function bindConn(conn) {
+      peers.push(conn);
+      conn.on('open', () => {
+        updateStatus();
+        conn.send({ type: 'SYNC', items: Object.values(vault), deleted: [...deleted] });
+      });
+      conn.on('data', m => {
+        handleIncoming(m, isRoot);
+        if (m.type === 'SYNC' && isRoot) {
+          conn.send({ type: 'SYNC_BACK', items: Object.values(vault), deleted: [...deleted] });
+        }
+        if (m.type === 'SYNC_BACK') handleIncoming({ type: 'SYNC', items: m.items, deleted: m.deleted }, false);
+      });
+      conn.on('close', () => { peers = peers.filter(p => p !== conn); updateStatus(); if (!isRoot) setTimeout(joinMesh, 1200); });
+    }
+
+    function openForm(id = '') {
+      const i = id ? vault[id] : null;
+      document.getElementById('editId').value = id;
+      document.getElementById('formHeading').textContent = i ? 'Edit Your File' : 'Share New File';
+      document.getElementById('gTitle').value = i ? i.title : '';
+      document.getElementById('gTag').value = i ? i.tag : '';
+      document.getElementById('gDesc').value = i ? i.desc : '';
+      document.getElementById('gFile').value = '';
+      document.getElementById('upPanel').classList.add('active');
+    }
+
+    function publish() {
+      const id = document.getElementById('editId').value || ('f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
+      const ex = vault[id];
+      if (ex && ex.owner !== ownerId) return alert('Your Creator Key does not match this upload.');
+      const title = document.getElementById('gTitle').value.trim();
+      const tag = document.getElementById('gTag').value.trim() || 'Shared File';
+      const desc = document.getElementById('gDesc').value.trim() || 'Peer-to-peer shared file.';
+      const file = document.getElementById('gFile').files[0];
+      if (!title || (!file && !ex)) return alert('Enter a title and choose a file.');
+
+      const commit = (dataUrl, fileName, fileSize, mime) => {
+        applyState({ id, owner: ownerId, title, tag, desc, dataUrl, fileName, fileSize, mime, created: ex ? ex.created : Date.now(), updated: Date.now() });
+        document.getElementById('upPanel').classList.remove('active');
+      };
+
+      if (file) {
+        const r = new FileReader();
+        const sizeStr = file.size > 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(file.size / 1024)) + ' KB';
+        r.onload = e => commit(e.target.result, file.name, sizeStr, file.type || 'application/octet-stream');
+        r.readAsDataURL(file);
+      } else {
+        commit(ex.dataUrl, ex.fileName, ex.fileSize, ex.mime);
+      }
+    }
+
+    function unpublish(id) { if (vault[id]?.owner === ownerId && confirm('Unpublish this file from your vault and all online peers?')) removeState(id); }
+    function esc(s) { return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+
+    function render() {
+      const q = document.getElementById('search').value.toLowerCase();
+      const items = Object.values(vault).filter(g => (g.title + g.tag + g.desc + (g.fileName || '')).toLowerCase().includes(q)).sort((a, b) => b.created - a.created);
+      document.getElementById('grid').innerHTML = items.length ? items.map((g, i) => {
+        const isPlayable = (g.fileName || '').match(/\.(html?|txt|png|jpe?g|gif|webp|svg|mp3|wav|mp4|pdf)$/i);
+        return `
+        <div class="card" style="animation-delay:${i * 0.05}s">
+          <div>
+            <span class="tag">${esc(g.tag)}</span>
+            <h3>${esc(g.title)}</h3>
+            <div class="meta">${esc(g.fileName || 'file')} • ${esc(g.fileSize || '')}</div>
+            <p>${esc(g.desc)}</p>
+          </div>
+          <div>
+            <div style="display:flex; gap:6px;">
+              ${isPlayable ? `<button onclick="previewFile('${g.id}')" style="flex:1;">⚡ Open</button>` : ''}
+              <a href="${g.dataUrl}" download="${esc(g.fileName || 'download')}" style="flex:1; text-decoration:none;"><button class="${isPlayable ? 'btn-sec' : ''}" style="width:100%;">⬇ Download</button></a>
+            </div>
+            ${g.owner === ownerId ? `<div style="display:flex; gap:6px; margin-top:8px;">
+              <button class="btn-sm btn-sec" onclick="openForm('${g.id}')">✏️ Edit</button>
+              <button class="btn-sm" style="background:#dc2626;" onclick="unpublish('${g.id}')">🗑️ Unpublish</button>
+            </div>` : ''}
+          </div>
+        </div>`;
+      }).join('') : '<p style="color:var(--muted);">No files cached yet. Click "+ Share File" to upload.</p>';
+    }
+
+    function previewFile(id) {
+      const g = vault[id];
+      if (!g) return;
+      document.getElementById('mTitle').textContent = g.title;
+      document.getElementById('frame').src = g.dataUrl;
+      document.getElementById('modal').classList.add('active');
+    }
+
+    function closeModal() { document.getElementById('modal').classList.remove('active'); document.getElementById('frame').src = ''; }
+  </script>
+</body>
+</html>
